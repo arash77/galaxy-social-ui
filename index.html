@@ -28,7 +28,7 @@
         <label class="block font-medium">Content</label>
         <textarea id="post-content"></textarea>
       </div>
-      <div id="warnings" class="text-yellow-600"></div>
+      <div id="warnings" class="p-4 rounded bg-yellow-100 hidden"></div>
     </div>
     <div id="output-container" class="mt-8 hidden">
       <h2 id="output-heading" class="text-xl font-semibold mb-2"></h2>
@@ -75,16 +75,23 @@
       return showError('Content cannot be empty.');
     }
 
-    // Warnings under content
+    // split warnings under content
     const warnDiv = document.getElementById('warnings');
     const warnings = [];
     selected.forEach(name => {
       const maxLen = pluginMax[name];
       if (maxLen && content.length > maxLen) {
-        warnings.push(`${name}: content length (${content.length}) exceeds max (${maxLen}); it will be split.`);
+        const parts = Math.ceil(content.length / maxLen);
+        warnings.push(`⚠️ Will split into ${parts} posts on ${name} (max ${maxLen} chars each)`);
       }
     });
-    warnDiv.innerHTML = warnings.map(w => `<div>${w}</div>`).join('');
+    if (warnings.length > 0) {
+      warnDiv.innerHTML = warnings.map(w => `<div>${w}</div>`).join('');
+      warnDiv.classList.remove('hidden');
+    } else {
+      warnDiv.classList.add('hidden');
+      warnDiv.innerHTML = '';
+    }
 
     // Generate metadata
     const mentions = {};
