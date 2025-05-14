@@ -177,8 +177,18 @@
           wrap.appendChild(tagContainer);
           container.appendChild(wrap);
 
-          tagInstances[`mention-${name}`] = new Tagify(mIn, { pattern: /^(?!@)\S+$/ });
-          tagInstances[`hashtag-${name}`] = new Tagify(hIn, { pattern: /^(?!#)\S+$/ });
+            tagInstances[`mention-${name}`] = new Tagify(mIn, {
+            pattern: /\S+/,
+            transformTag: (tagData) => {
+              tagData.value = tagData.value.replace(/^@/, '');
+            }
+            });
+            tagInstances[`hashtag-${name}`] = new Tagify(hIn, {
+            pattern: /\S+/,
+            transformTag: (tagData) => {
+              tagData.value = tagData.value.replace(/^#/, '');
+            }
+            });
 
           cb.addEventListener('change', () => { tagContainer.classList.toggle('hidden', !cb.checked); updateAll(); });
           tagInstances[`mention-${name}`].on('change', updateAll);
