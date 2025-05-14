@@ -156,8 +156,8 @@
           if (plugin.config?.account_url) {
             const link = document.createElement('a');
             link.href = plugin.config.account_url;
-            link.target = '_blank'; link.className = 'text-blue-500 text-sm underline';
-            link.textContent = plugin.config.account_url;
+            link.target = '_blank'; link.className = 'text-blue-500 text-sm';
+            link.innerHTML = "🔗";
             lbl.appendChild(link);
           }
           wrap.appendChild(lbl);
