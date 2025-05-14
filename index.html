@@ -15,99 +15,169 @@
   <div class="max-w-3xl mx-auto p-6 bg-white shadow-xl mt-10 rounded-xl">
     <h1 class="text-2xl font-bold mb-6">Galaxy Social Post Creator</h1>
     <div id="error-message" class="text-red-500 mb-4 hidden"></div>
-    <form id="post-form" class="space-y-6">
+    <div class="space-y-6">
       <div>
-        <label class="block font-medium">Title (used as filename)</label>
-        <input type="text" id="post-title" class="w-full p-2 border rounded" required />
-      </div>
-      <div>
-        <label class="block font-medium">Content</label>
-        <textarea id="post-content"></textarea>
+        <label class="block font-medium">Title (filename)</label>
+        <input type="text" id="post-title" class="w-full p-2 border rounded">
       </div>
       <div>
         <label class="block font-medium mb-2">Select Media Platforms</label>
         <div id="media-options" class="flex flex-col gap-4"></div>
       </div>
-      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-        Generate Markdown File
-      </button>
-    </form>
+      <div>
+        <label class="block font-medium">Content</label>
+        <textarea id="post-content"></textarea>
+      </div>
+      <div id="warnings" class="text-yellow-600"></div>
+    </div>
     <div id="output-container" class="mt-8 hidden">
-      <h2 class="text-xl font-semibold mb-2">Generated Markdown Content</h2>
-      <pre id="output" class="bg-gray-100 p-4 rounded overflow-auto whitespace-pre-wrap"></pre>
-      <a id="download-link" class="inline-block mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Download .md File</a>
+      <h2 id="output-heading" class="text-xl font-semibold mb-2"></h2>
+      <pre id="output" class="bg-gray-100 p-4 rounded overflow-auto whitespace-pre-wrap" style="max-height:300px;"></pre>
+      <div class="mt-4 flex space-x-2">
+        <a id="pr-button" target="_blank" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 hidden">Create PR</a>
+      </div>
     </div>
   </div>
-  <script>
-    let easyMDE;
-    const tagInstances = {};
+<script>
+  let easyMDE;
+  const tagInstances = {};
+  const pluginMax = {};
+
+  function showError(msg) {
     const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = msg;
+    errorDiv.classList.remove('hidden');
+  }
 
-    function showError(msg) {
-      errorDiv.textContent = msg;
-      errorDiv.classList.remove('hidden');
+  function clearError() {
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = '';
+    errorDiv.classList.add('hidden');
+  }
+
+  function updateAll() {
+    clearError();
+    const title = document.getElementById('post-title').value.trim();
+    const content = easyMDE.value().trim();
+    const selected = Array.from(document.querySelectorAll('input.media-checkbox:checked')).map(cb => cb.value);
+
+    // Validation
+    if (!title) {
+      hideOutput();
+      return showError('Title is required.');
     }
-    function clearError() {
-      errorDiv.textContent = '';
-      errorDiv.classList.add('hidden');
+    if (selected.length === 0) {
+      hideOutput();
+      return showError('Select at least one media platform.');
+    }
+    if (!content) {
+      hideOutput();
+      return showError('Content cannot be empty.');
     }
 
-    window.addEventListener('DOMContentLoaded', async () => {
-      easyMDE = new EasyMDE({ element: document.getElementById('post-content') });
-      try {
-        const res = await fetch('https://raw.githubusercontent.com/usegalaxy-eu/galaxy-social/main/plugins.yml');
-        if (!res.ok) throw new Error('YAML fetch failed');
-        const data = jsyaml.load(await res.text());
-        const container = document.getElementById('media-options');
-        data.plugins.filter(p => p.enabled).forEach(plugin => {
-          const name = plugin.name;
-          const wrap = document.createElement('div'); wrap.id = `wrap-${name}`; wrap.className = 'space-y-2';
-          const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = `cb-${name}`; cb.value = name; cb.className = 'form-checkbox';
-          const lbl = document.createElement('label'); lbl.htmlFor = cb.id; lbl.className = 'flex items-center space-x-2'; lbl.appendChild(cb);
-          const spanLabel = document.createElement('span'); spanLabel.className = 'font-semibold'; spanLabel.textContent = name;
-          lbl.appendChild(spanLabel); wrap.appendChild(lbl);
-          const tagContainer = document.createElement('div'); tagContainer.id = `tags-${name}`; tagContainer.className = 'space-y-2 hidden';
-          const mIn = document.createElement('input'); mIn.id = `mention-${name}`; mIn.placeholder = 'Mentions (no spaces)'; mIn.className = 'w-full p-2 border rounded';
-          const hIn = document.createElement('input'); hIn.id = `hashtag-${name}`; hIn.placeholder = 'Hashtags (no spaces)'; hIn.className = 'w-full p-2 border rounded';
-          tagContainer.appendChild(mIn); tagContainer.appendChild(hIn); wrap.appendChild(tagContainer); container.appendChild(wrap);
-          tagInstances[`mention-${name}`] = new Tagify(mIn, { pattern: /^[^\s]+$/ });
-          tagInstances[`hashtag-${name}`] = new Tagify(hIn, { pattern: /^[^\s]+$/ });
-          cb.addEventListener('change', () => tagContainer.classList.toggle('hidden', !cb.checked));
-        });
-      } catch (e) { console.error(e); showError('Failed to load media options'); }
-
-      document.getElementById('post-form').addEventListener('submit', e => {
-        e.preventDefault(); clearError();
-        const title = document.getElementById('post-title').value.trim();
-        const content = easyMDE.value().trim();
-        if (!title) return showError('Title is required');
-        if (!content) return showError('Content cannot be empty');
-        const selected = Array.from(document.querySelectorAll('input[type=checkbox].form-checkbox'))
-          .filter(cb => cb.checked).map(cb => cb.value);
-        if (selected.length === 0) return showError('Select at least one media');
-        const mentions = {}, hashtags = {};
-        for (const name of selected) {
-          const mTags = tagInstances[`mention-${name}`].value;
-          const hTags = tagInstances[`hashtag-${name}`].value;
-          if (mTags.length) mentions[name] = mTags.map(t=>t.value);
-          if (hTags.length) hashtags[name] = hTags.map(t=>t.value);
-        }
-        const slug = title.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,'');
-        const filename = `${slug}.md`;
-        let meta = `---\nmedia:\n${selected.map(m=>` - ${m}`).join('\n')}`;
-        if (Object.keys(mentions).length) meta += `\nmentions:` + Object.entries(mentions)
-          .map(([k,vs])=>`\n ${k}:\n${vs.map(v=>`  - ${v}`).join('\n')}`).join('');
-        if (Object.keys(hashtags).length) meta += `\nhashtags:` + Object.entries(hashtags)
-          .map(([k,vs])=>`\n ${k}:\n${vs.map(v=>`  - ${v}`).join('\n')}`).join('');
-        meta += `\n---`;
-        const full = `${meta}\n${content}\n`;
-        document.getElementById('output').textContent = full;
-        const link = document.getElementById('download-link');
-        link.href = URL.createObjectURL(new Blob([full],{type:'text/markdown'}));
-        link.download = filename;
-        document.getElementById('output-container').classList.remove('hidden');
-      });
+    // Warnings under content
+    const warnDiv = document.getElementById('warnings');
+    const warnings = [];
+    selected.forEach(name => {
+      const maxLen = pluginMax[name];
+      if (maxLen && content.length > maxLen) {
+        warnings.push(`${name}: content length (${content.length}) exceeds max (${maxLen}); it will be split.`);
+      }
     });
-  </script>
+    warnDiv.innerHTML = warnings.map(w => `<div>${w}</div>`).join('');
+
+    // Generate metadata
+    const mentions = {};
+    const hashtags = {};
+    selected.forEach(name => {
+      mentions[name] = (tagInstances[`mention-${name}`].value || []).map(t => t.value);
+      hashtags[name] = (tagInstances[`hashtag-${name}`].value || []).map(t => t.value);
+    });
+    const year = new Date().getFullYear();
+    const slug = title.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,'');
+
+    let meta = `---\nmedia:\n${selected.map(m => ` - ${m}`).join('\n')}`;
+    if (Object.values(mentions).some(a => a.length)) {
+      meta += `\nmentions:` + Object.entries(mentions)
+        .filter(([, vs]) => vs.length)
+        .map(([k, vs]) => `\n ${k}:\n${vs.map(v => `  - ${v}`).join('\n')}`).join('');
+    }
+    if (Object.values(hashtags).some(a => a.length)) {
+      meta += `\nhashtags:` + Object.entries(hashtags)
+        .filter(([, vs]) => vs.length)
+        .map(([k, vs]) => `\n ${k}:\n${vs.map(v => `  - ${v}`).join('\n')}`).join('');
+    }
+    meta += `\n---`;
+    const full = `${meta}\n${content}\n`;
+
+    // Update PR link
+    const prBtn = document.getElementById('pr-button');
+    prBtn.href = `https://github.com/usegalaxy-eu/galaxy-social/new/main/?filename=posts/${year}/${slug}.md&value=` + encodeURIComponent(full);
+
+    // Show output
+    showOutputContent(full);
+  }
+
+  function showOutputContent(md) {
+    const container = document.getElementById('output-container');
+    document.getElementById('output-heading').textContent = 'Generated Markdown Content';
+    document.getElementById('output').textContent = md;
+    document.getElementById('pr-button').classList.remove('hidden');
+    container.classList.remove('hidden');
+  }
+
+  function hideOutput() {
+    document.getElementById('output-container').classList.add('hidden');
+  }
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    easyMDE = new EasyMDE({ element: document.getElementById('post-content'), spellChecker: false });
+    easyMDE.codemirror.on('change', updateAll);
+    document.getElementById('post-title').addEventListener('input', updateAll);
+
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/usegalaxy-eu/galaxy-social/main/plugins.yml');
+      const data = jsyaml.load(await res.text());
+      const container = document.getElementById('media-options');
+
+      data.plugins
+        .filter(p => p.enabled && p.name !== 'markdown')
+        .forEach(plugin => {
+          const name = plugin.name;
+          pluginMax[name] = plugin.config?.max_content_length;
+
+          const wrap = document.createElement('div'); wrap.className = 'space-y-2';
+          const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = `cb-${name}`; cb.value = name;
+          cb.className = 'media-checkbox form-checkbox';
+          const lbl = document.createElement('label'); lbl.htmlFor = cb.id; lbl.className = 'flex items-center space-x-2';
+          lbl.appendChild(cb);
+          const span = document.createElement('span'); span.className = 'font-semibold'; span.textContent = name;
+          lbl.appendChild(span);
+          if (plugin.config?.account_url) {
+            const link = document.createElement('a');
+            link.href = plugin.config.account_url;
+            link.target = '_blank'; link.className = 'text-blue-500 text-sm underline';
+            link.textContent = plugin.config.account_url;
+            lbl.appendChild(link);
+          }
+          wrap.appendChild(lbl);
+
+          const tagContainer = document.createElement('div'); tagContainer.className = 'space-y-2 hidden';
+          const mIn = document.createElement('input'); mIn.id = `mention-${name}`; mIn.placeholder = 'Mentions'; mIn.className = 'w-full p-2 border rounded';
+          const hIn = document.createElement('input'); hIn.id = `hashtag-${name}`; hIn.placeholder = 'Hashtags'; hIn.className = 'w-full p-2 border rounded';
+          tagContainer.appendChild(mIn); tagContainer.appendChild(hIn);
+          wrap.appendChild(tagContainer);
+          container.appendChild(wrap);
+
+          tagInstances[`mention-${name}`] = new Tagify(mIn, { pattern: /^(?!@)\S+$/ });
+          tagInstances[`hashtag-${name}`] = new Tagify(hIn, { pattern: /^(?!#)\S+$/ });
+
+          cb.addEventListener('change', () => { tagContainer.classList.toggle('hidden', !cb.checked); updateAll(); });
+          tagInstances[`mention-${name}`].on('change', updateAll);
+          tagInstances[`hashtag-${name}`].on('change', updateAll);
+        });
+    } catch (e) { console.error(e); showError('Failed to load media options'); }
+  });
+</script>
 </body>
 </html>
